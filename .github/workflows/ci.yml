@@ -46,6 +46,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Delete Cargo.lock IMMEDIATELY after checkout
+        run: |
+          find . -name "Cargo.lock" -delete
+          echo "Cargo.lock files removed:"
+          find . -name "Cargo.lock" 2>/dev/null || echo "None found ✅"
+
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
@@ -55,7 +61,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: ${{ runner.os }}-stable-anchor030-${{ hashFiles('programs/**/Cargo.toml') }}-v18
+          key: ${{ runner.os }}-stable-anchor030-${{ hashFiles('programs/**/Cargo.toml') }}-v19
 
       - name: Pre-create Solana dirs
         run: |
