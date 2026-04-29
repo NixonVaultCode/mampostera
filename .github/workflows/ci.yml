@@ -61,7 +61,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: ${{ runner.os }}-stable-anchor030-${{ hashFiles('programs/**/Cargo.toml') }}-v19
+          key: ${{ runner.os }}-stable-anchor030-${{ hashFiles('programs/**/Cargo.toml') }}-v21
 
       - name: Pre-create Solana dirs
         run: |
@@ -77,17 +77,19 @@ jobs:
           echo "$HOME/.local/bin" >> $GITHUB_PATH
           solana --version || $HOME/.local/bin/solana --version
 
-      # AVM 0.31.0 descarga el binario precompilado automáticamente
       - name: Install AVM + anchor-cli 0.31.0 (binary via AVM)
+        env:
+          # Prevenir generación de Cargo.lock v4 durante instalación
+          CARGO_UNSTABLE_NEXT_LOCKFILE_BUMP: "false"
         run: |
           cargo install --git https://github.com/coral-xyz/anchor \
             --tag v0.31.0 avm --locked --force
           export PATH="$HOME/.cargo/bin:$PATH"
-          # avm install en 0.31+ descarga binario, no compila
           avm install 0.31.0
           avm use 0.31.0
+          echo "$HOME/.avm/bin" >> $GITHUB_PATH
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
-          $HOME/.cargo/bin/anchor --version
+          $HOME/.avm/bin/anchor --version || $HOME/.cargo/bin/anchor --version
 
       - name: Verify tools
         run: |
