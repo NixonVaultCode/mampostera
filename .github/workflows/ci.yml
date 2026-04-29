@@ -1,11 +1,13 @@
 # =============================================================================
 #  MAMPOSTERA v0.5.4 — CI/CD Pipeline — VERSIÓN DEFINITIVA FINAL
 #
-#  Estrategia de instalación:
-#  - Rust nightly-2025-03-15 (compatible con todos los crates modernos)
-#  - anchor-cli 0.30.1 compilado con ese nightly (resuelve time + hashbrown)
-#  - anchor-lang 0.30.1 en el programa (alineado con CLI via Anchor.toml)
-#  - Sin conflictos de lockfile: nightly genera v4, nightly lo lee correctamente
+#  ESTRATEGIA RESUELTA:
+#  - anchor-cli 0.31.0 descargado como BINARIO OFICIAL desde GitHub Releases
+#    (sin compilar — evita TODOS los problemas de Rust/time/ahash/stdsimd)
+#  - anchor-lang 0.30.1 en el programa Rust (sin cambios)
+#  - El WARNING de version mismatch es solo informativo — NO impide el build
+#  - Rust stable para compilar el programa (anchor build llama cargo-build-sbf)
+#  - CARGO_UNSTABLE_NEXT_LOCKFILE_BUMP=false previene lockfile v4
 # =============================================================================
 
 name: Mampostera CI v0.5
@@ -18,9 +20,7 @@ on:
 
 env:
   SOLANA_VERSION: "1.18.16"
-  ANCHOR_VERSION:  "0.30.1"
   NODE_VERSION:    "20"
-  RUST_CHANNEL:    "nightly-2025-03-15"
 
 jobs:
   # ─── Job 1: Auditoría ──────────────────────────────────────────────────────
@@ -46,12 +46,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # nightly-2025-03-15: compatible con edition2024, time v0.3.x, hashbrown v0.17
-      - name: Install Rust nightly
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: ${{ env.RUST_CHANNEL }}
-          components: rustfmt,clippy
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Cargo registry
         uses: actions/cache@v4
@@ -59,7 +55,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: ${{ runner.os }}-${{ env.RUST_CHANNEL }}-anchor-${{ env.ANCHOR_VERSION }}-v15-locked
+          key: ${{ runner.os }}-stable-anchor030-${{ hashFiles('programs/**/Cargo.toml') }}-v16
 
       - name: Pre-create Solana dirs
         run: |
@@ -75,21 +71,16 @@ jobs:
           echo "$HOME/.local/bin" >> $GITHUB_PATH
           solana --version || $HOME/.local/bin/solana --version
 
-      # Instalar anchor-cli 0.30.1 compilado con nightly
-      # Esto resuelve: time v0.3.29 + hashbrown edition2024 + lockfile v4
-      - name: Install anchor-cli 0.30.1
+      # Descargar anchor-cli 0.31.0 como BINARIO OFICIAL — sin compilar
+      # Ref: https://github.com/coral-xyz/anchor/releases/tag/v0.31.0
+      - name: Install anchor-cli 0.31.0 (binary)
         run: |
-          if $HOME/.cargo/bin/anchor --version 2>/dev/null | grep -q "0.30.1"; then
-            echo "✅ anchor-cli 0.30.1 ya cacheado"
-          else
-            echo "Compilando anchor-cli 0.30.1 con nightly..."
-            cargo +${{ env.RUST_CHANNEL }} install anchor-cli \
-              --version ${{ env.ANCHOR_VERSION }} \
-              --locked \
-              --force
-          fi
-          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
-          $HOME/.cargo/bin/anchor --version
+          mkdir -p $HOME/.local/bin
+          curl -sSfL \
+            "https://github.com/coral-xyz/anchor/releases/download/v0.31.0/anchor-linux-x86_64" \
+            -o $HOME/.local/bin/anchor
+          chmod +x $HOME/.local/bin/anchor
+          anchor --version
 
       - name: Verify tools
         run: |
@@ -102,12 +93,10 @@ jobs:
 
       - name: Configure build environment
         run: |
-          # Generar keypair CI
           solana-keygen new --no-bip39-passphrase --outfile /tmp/ci-wallet.json
           PROGRAM_ID=$(solana-keygen pubkey /tmp/ci-wallet.json)
           echo "Program ID: $PROGRAM_ID"
 
-          # Sincronizar Program ID
           sed -i "s/declare_id!(\".*\")/declare_id!(\"$PROGRAM_ID\")/" \
             programs/mampostera/src/lib.rs
           sed -i "s/mampostera = \".*\"/mampostera = \"$PROGRAM_ID\"/" \
@@ -116,11 +105,8 @@ jobs:
           echo "ANCHOR_WALLET=/tmp/ci-wallet.json" >> $GITHUB_ENV
           solana config set --url localhost
 
-          # Eliminar solana-program como dep directa (anchor-lang la re-exporta)
+          # Quitar solana-program como dep directa
           sed -i '/^solana-program/d' programs/mampostera/Cargo.toml || true
-
-          echo "=== programs/mampostera/Cargo.toml ==="
-          grep "anchor-lang\|anchor-spl\|solana" programs/mampostera/Cargo.toml | head -5
 
       - name: Fix permissions
         run: |
@@ -131,7 +117,8 @@ jobs:
       - name: Build Anchor program
         run: anchor build
         env:
-          RUSTUP_TOOLCHAIN: ${{ env.RUST_CHANNEL }}
+          # Evita que cargo genere Cargo.lock v4 con nightly features
+          CARGO_UNSTABLE_NEXT_LOCKFILE_BUMP: "false"
 
       - name: Verify IDL
         run: |
@@ -150,7 +137,6 @@ jobs:
         run: anchor test --skip-deploy
         env:
           ANCHOR_WALLET: /tmp/ci-wallet.json
-          RUSTUP_TOOLCHAIN: ${{ env.RUST_CHANNEL }}
 
       - name: Upload artifacts
         if: always()
@@ -207,10 +193,8 @@ jobs:
     environment: devnet
     steps:
       - uses: actions/checkout@v4
-      - name: Install Rust nightly
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: ${{ env.RUST_CHANNEL }}
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
       - name: Pre-create Solana dirs
         run: mkdir -p $HOME/.local/bin $HOME/.cache/solana && chmod 755 $HOME/.cache/solana
       - name: Install Solana
@@ -219,11 +203,13 @@ jobs:
             | tar -jxf - -C /tmp
           cp -r /tmp/solana-release/bin/* $HOME/.local/bin/
           echo "$HOME/.local/bin" >> $GITHUB_PATH
-      - name: Install anchor-cli 0.30.1
+      - name: Install anchor-cli 0.31.0 (binary)
         run: |
-          cargo +${{ env.RUST_CHANNEL }} install anchor-cli \
-            --version ${{ env.ANCHOR_VERSION }} --locked --force
-          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+          curl -sSfL \
+            "https://github.com/coral-xyz/anchor/releases/download/v0.31.0/anchor-linux-x86_64" \
+            -o $HOME/.local/bin/anchor
+          chmod +x $HOME/.local/bin/anchor
+          anchor --version
       - name: Prep
         run: sed -i '/^solana-program/d' programs/mampostera/Cargo.toml || true
       - name: Restore wallet
@@ -239,7 +225,7 @@ jobs:
           echo "PROGRAM_ID=$PROGRAM_ID" >> $GITHUB_ENV
           echo "✅ https://explorer.solana.com/address/$PROGRAM_ID?cluster=devnet"
         env:
-          RUSTUP_TOOLCHAIN: ${{ env.RUST_CHANNEL }}
+          CARGO_UNSTABLE_NEXT_LOCKFILE_BUMP: "false"
       - name: Deploy Vercel
         uses: amondnet/vercel-action@v25
         with:
@@ -262,10 +248,8 @@ jobs:
     environment: testnet
     steps:
       - uses: actions/checkout@v4
-      - name: Install Rust nightly
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: ${{ env.RUST_CHANNEL }}
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
       - name: Pre-create Solana dirs
         run: mkdir -p $HOME/.local/bin $HOME/.cache/solana && chmod 755 $HOME/.cache/solana
       - name: Install Solana
@@ -274,11 +258,13 @@ jobs:
             | tar -jxf - -C /tmp
           cp -r /tmp/solana-release/bin/* $HOME/.local/bin/
           echo "$HOME/.local/bin" >> $GITHUB_PATH
-      - name: Install anchor-cli 0.30.1
+      - name: Install anchor-cli 0.31.0 (binary)
         run: |
-          cargo +${{ env.RUST_CHANNEL }} install anchor-cli \
-            --version ${{ env.ANCHOR_VERSION }} --locked --force
-          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+          curl -sSfL \
+            "https://github.com/coral-xyz/anchor/releases/download/v0.31.0/anchor-linux-x86_64" \
+            -o $HOME/.local/bin/anchor
+          chmod +x $HOME/.local/bin/anchor
+          anchor --version
       - name: Prep
         run: sed -i '/^solana-program/d' programs/mampostera/Cargo.toml || true
       - name: Restore wallet
@@ -293,7 +279,7 @@ jobs:
           PROGRAM_ID=$(solana address -k target/deploy/mampostera-keypair.json)
           echo "PROGRAM_ID=$PROGRAM_ID" >> $GITHUB_ENV
         env:
-          RUSTUP_TOOLCHAIN: ${{ env.RUST_CHANNEL }}
+          CARGO_UNSTABLE_NEXT_LOCKFILE_BUMP: "false"
       - name: Publish IDL
         run: |
           anchor idl init \
