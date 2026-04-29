@@ -1,3 +1,5 @@
 [unstable]
 next-lockfile-bump = false
-[workspace]
+[lints.rust]
+# CI compatibility
+unexpected_cfgs = "allow"
