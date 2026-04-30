@@ -99,14 +99,12 @@ jobs:
         run: |
           solana-keygen new --no-bip39-passphrase --outfile /tmp/ci-wallet.json
           PROGRAM_ID=$(solana-keygen pubkey /tmp/ci-wallet.json)
-          sed -i "s/declare_id!(\".*\")/declare_id!(\"$PROGRAM_ID\")/" \
-            programs/mampostera/src/lib.rs
-          sed -i "s/mampostera = \".*\"/mampostera = \"$PROGRAM_ID\"/" \
-            Anchor.toml
+          sed -i "s/declare_id!(\".*\")/declare_id!(\"$PROGRAM_ID\")/" programs/mampostera/src/lib.rs
+          sed -i "s/mampostera = \".*\"/mampostera = \"$PROGRAM_ID\"/" Anchor.toml
           echo "ANCHOR_WALLET=/tmp/ci-wallet.json" >> $GITHUB_ENV
           solana config set --url localhost
           sed -i '/^solana-program/d' programs/mampostera/Cargo.toml || true
-
+          
       - name: Fix permissions
         run: |
           sudo chown -R "$(id -u):$(id -g)" $HOME/.cache || true
