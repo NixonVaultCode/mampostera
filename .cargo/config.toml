@@ -1,5 +1,9 @@
 [unstable]
 next-lockfile-bump = false
+
 [lints.rust]
 # CI compatibility
 unexpected_cfgs = "allow"
+
+[net]
+git-fetch-with-cli = true
