@@ -1,19 +1,27 @@
 [workspace]
-members = ["programs/*"]
-resolver = "2"
+members   = ["programs/*"]
+resolver  = "2"
 
 [workspace.package]
-rust-version = "1.80"
+# Mínimo requerido por edition2024 (constant_time_eq 0.4.2)
+rust-version = "1.85"
 
 [profile.release]
 overflow-checks = true
-lto = "fat"
-codegen-units = 1
+lto             = "fat"
+codegen-units   = 1
 
 [profile.release.build-override]
-opt-level = 3
-incremental = false
+opt-level     = 3
+incremental   = false
 codegen-units = 1
 
-[patch.crates-io]
-time = { git = "https://github.com/time-rs/time", rev = "v0.3.36" }
+# NOTA: El patch de `time` se eliminó.
+# Era necesario para workaround de una regresión en time <0.3.36, pero:
+#   1. El rev "v0.3.36" es un tag, no un hash — cargo lo resuelve de forma
+#      inconsistente entre versiones y genera el warning "patch was not used".
+#   2. Con Rust 1.85+ y anchor 0.30.1 las dependencias de time se resuelven
+#      correctamente desde crates.io sin necesidad de patch.
+# Si vuelve a aparecer un error de `time`, agregar:
+#   [patch.crates-io]
+#   time = { version = "0.3.47" }   ← usar la versión de crates.io directamente
