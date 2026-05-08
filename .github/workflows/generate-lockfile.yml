@@ -1,0 +1,57 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# EJECUTA ESTE WORKFLOW UNA SOLA VEZ manualmente desde GitHub Actions.
+# Genera un Cargo.lock v3 compatible y lo commitea al repo.
+# Después de que corra exitosamente, puedes borrarlo.
+# ─────────────────────────────────────────────────────────────────────────────
+name: Generate Cargo.lock
+
+on:
+  workflow_dispatch:  # Solo manual
+
+jobs:
+  generate-lockfile:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Necesario para hacer commit
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Rust 1.86.0
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.86.0"
+
+      # Eliminar cualquier Cargo.lock existente
+      - name: Remove existing Cargo.lock
+        run: rm -f Cargo.lock
+
+      # Generar Cargo.lock fresco — Rust 1.86 genera v4 por defecto.
+      # CARGO_UNSTABLE_NEXT_LOCKFILE_BUMP=false lo fuerza a v3.
+      - name: Generate Cargo.lock v3
+        run: cargo generate-lockfile
+        env:
+          CARGO_UNSTABLE_NEXT_LOCKFILE_BUMP: "false"
+
+      # Verificar versión del lockfile generado
+      - name: Verify lockfile version
+        run: |
+          VERSION=$(head -5 Cargo.lock | grep "^version" | awk '{print $3}')
+          echo "Lockfile version: $VERSION"
+          if [ "$VERSION" = "4" ]; then
+            echo "ERROR: se generó v4, se esperaba v3"
+            exit 1
+          fi
+          echo "OK: lockfile v$VERSION generado correctamente"
+
+      # Commitear el Cargo.lock al repo
+      - name: Commit Cargo.lock
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Cargo.lock
+          git diff --staged --quiet && echo "No changes" || \
+            git commit -m "chore: add Cargo.lock v3 [skip ci]"
+          git push
