@@ -10,7 +10,7 @@ env:
   NODE_VERSION: "24"
   SOLANA_VERSION: "1.18.26"
   ANCHOR_VERSION: "0.30.1"
-  RUST_VERSION: "1.82.0"
+  RUST_VERSION: "1.85.0"
 
 jobs:
   security-audit:
@@ -84,7 +84,7 @@ jobs:
       - name: Build Anchor program
         run: |
           source "$HOME/.cargo/env"
-          anchor build
+          CARGO_UNSTABLE_NEXT_LOCKFILE_BUMP=false anchor build
 
       - name: Verify IDL
         run: |
