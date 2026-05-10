@@ -56,12 +56,7 @@ jobs:
           echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
 
       - name: Install Anchor CLI ${{ env.ANCHOR_VERSION }}
-        run: |
-          printf '[patch.crates-io]\ntime = { version = "=0.3.47" }\n' > /tmp/patch.toml
-          cargo install --git https://github.com/coral-xyz/anchor \
-            --tag v${{ env.ANCHOR_VERSION }} anchor-cli \
-            --config /tmp/patch.toml
-          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+        run: npm install -g @coral-xyz/anchor-cli@${{ env.ANCHOR_VERSION }}
 
       - name: Verify tools
         run: |
@@ -177,12 +172,7 @@ jobs:
           sh -c "$(curl -sSfL https://release.anza.xyz/v${{ env.SOLANA_VERSION }}/install)"
           echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
       - name: Install Anchor CLI
-        run: |
-          printf '[patch.crates-io]\ntime = { version = "=0.3.47" }\n' > /tmp/patch.toml
-          cargo install --git https://github.com/coral-xyz/anchor \
-            --tag v${{ env.ANCHOR_VERSION }} anchor-cli \
-            --config /tmp/patch.toml
-          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+        run: npm install -g @coral-xyz/anchor-cli@${{ env.ANCHOR_VERSION }}
       - name: Restore deploy wallet
         run: |
           echo "${{ secrets.DEPLOY_KEYPAIR_JSON }}" > /tmp/wallet.json
@@ -238,12 +228,7 @@ jobs:
           sh -c "$(curl -sSfL https://release.anza.xyz/v${{ env.SOLANA_VERSION }}/install)"
           echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
       - name: Install Anchor CLI
-        run: |
-          printf '[patch.crates-io]\ntime = { version = "=0.3.47" }\n' > /tmp/patch.toml
-          cargo install --git https://github.com/coral-xyz/anchor \
-            --tag v${{ env.ANCHOR_VERSION }} anchor-cli \
-            --config /tmp/patch.toml
-          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+        run: npm install -g @coral-xyz/anchor-cli@${{ env.ANCHOR_VERSION }}
       - name: Restore testnet wallet
         run: |
           echo "${{ secrets.TESTNET_DEPLOY_KEYPAIR_JSON }}" > /tmp/wallet.json
