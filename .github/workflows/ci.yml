@@ -8,9 +8,6 @@ on:
 
 env:
   NODE_VERSION: "24"
-  # Solana 1.18.17 + Rust 1.79.0 = lockfile v3 garantizado
-  # cargo-build-sbf embebido en esta versión de Solana usa Cargo 1.79
-  # que genera lockfile v3 nativo — sin patches, sin variables de entorno
   SOLANA_VERSION: "1.18.26"
   ANCHOR_VERSION: "0.30.1"
   RUST_VERSION: "1.85.0"
@@ -34,13 +31,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Rust 1.79.0 — mismo que usa cargo-build-sbf de Solana 1.18.17
       - name: Install Rust ${{ env.RUST_VERSION }}
         run: |
-          curl https://sh.rustup.rs -sSf | sh -s -- -y \
-            --default-toolchain ${{ env.RUST_VERSION }} \
-            --profile minimal \
-            --component rustfmt,clippy
+          curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain ${{ env.RUST_VERSION }} --profile minimal --component rustfmt,clippy
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
       - uses: actions/setup-node@v4
@@ -54,8 +47,8 @@ jobs:
             ~/.cargo/git
             ~/.cargo/bin
             target
-          key: cargo-${{ env.RUST_VERSION }}-${{ env.SOLANA_VERSION }}-${{ hashFiles('**/Cargo.toml') }}
-          restore-keys: cargo-${{ env.RUST_VERSION }}-${{ env.SOLANA_VERSION }}-
+          key: cargo-${{ env.RUST_VERSION }}-${{ env.ANCHOR_VERSION }}-${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: cargo-${{ env.RUST_VERSION }}-${{ env.ANCHOR_VERSION }}-
 
       - name: Install Solana CLI ${{ env.SOLANA_VERSION }}
         run: |
@@ -64,13 +57,15 @@ jobs:
 
       - name: Install Anchor CLI ${{ env.ANCHOR_VERSION }}
         run: |
+          printf '[patch.crates-io]\ntime = { version = "0.3.45" }\n' > /tmp/patch.toml
           cargo install --git https://github.com/coral-xyz/anchor \
             --tag v${{ env.ANCHOR_VERSION }} anchor-cli \
-            --config "patch.crates-io.time={version='0.3.45'}"
+            --config /tmp/patch.toml
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
       - name: Verify tools
         run: |
+          source "$HOME/.cargo/env"
           rustc --version
           cargo --version
           solana --version
@@ -79,21 +74,22 @@ jobs:
 
       - name: Configure build environment
         run: |
+          source "$HOME/.cargo/env"
           solana-keygen new --no-bip39-passphrase --outfile /tmp/ci-wallet.json
           PROGRAM_ID=$(solana-keygen pubkey /tmp/ci-wallet.json)
-          sed -i "s/declare_id!(\"[^\"]*\")/declare_id!(\"$PROGRAM_ID\")/" \
-            programs/mampostera/src/lib.rs
-          sed -i "s/mampostera = \"[^\"]*\"/mampostera = \"$PROGRAM_ID\"/g" \
-            Anchor.toml
+          sed -i "s/declare_id!(\"[^\"]*\")/declare_id!(\"$PROGRAM_ID\")/" programs/mampostera/src/lib.rs
+          sed -i "s/mampostera = \"[^\"]*\"/mampostera = \"$PROGRAM_ID\"/g" Anchor.toml
           echo "ANCHOR_WALLET=/tmp/ci-wallet.json" >> $GITHUB_ENV
-          echo "PROGRAM_ID=$PROGRAM_ID"            >> $GITHUB_ENV
+          echo "PROGRAM_ID=$PROGRAM_ID" >> $GITHUB_ENV
           solana config set --url localhost
 
       - name: Install Node dependencies
         run: yarn install --no-frozen-lockfile
 
       - name: Build Anchor program
-        run: anchor build
+        run: |
+          source "$HOME/.cargo/env"
+          anchor build
 
       - name: Verify IDL
         run: |
@@ -101,7 +97,7 @@ jobs:
           import json
           d = json.load(open('target/idl/mampostera.json'))
           n = len(d.get('instructions', []))
-          print(f'IDL OK — {n} instrucciones')
+          print(f'IDL OK {n} instrucciones')
           "
 
       - name: Run Anchor tests
@@ -126,30 +122,25 @@ jobs:
     needs: test-program
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "yarn"
-
       - name: Install dependencies
         run: yarn install --no-frozen-lockfile
-
       - name: Type-check
         run: yarn tsc
         continue-on-error: true
-
       - name: Build Next.js
         run: yarn build
         env:
           NEXT_PUBLIC_PROGRAM_ID: "MAMPoSTERAv2222222222222222222222222222222"
-          NEXT_PUBLIC_SOLANA_VERSION: "devnet"
+          NEXT_PUBLIC_SOLANA_NETWORK: "devnet"
           NEXT_PUBLIC_RPC_ENDPOINT: "https://api.devnet.solana.com"
           NEXT_PUBLIC_AUTHORITY_PUBKEY: "11111111111111111111111111111111"
           NEXT_PUBLIC_CIVIC_GATEKEEPER: "ignREusXmGrscGNUesoU9mxfds9AiYTezUKex2PsZV6"
           NEXT_PUBLIC_USDC_MINT: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
           SKIP_ENV_VALIDATION: "1"
-
       - name: Upload frontend artifact
         uses: actions/upload-artifact@v4
         with:
@@ -165,18 +156,13 @@ jobs:
     environment: devnet
     steps:
       - uses: actions/checkout@v4
-
       - name: Install Rust ${{ env.RUST_VERSION }}
         run: |
-          curl https://sh.rustup.rs -sSf | sh -s -- -y \
-            --default-toolchain ${{ env.RUST_VERSION }} \
-            --profile minimal
+          curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain ${{ env.RUST_VERSION }} --profile minimal
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
-
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-
       - uses: actions/cache@v4
         with:
           path: |
@@ -184,36 +170,33 @@ jobs:
             ~/.cargo/git
             ~/.cargo/bin
             target
-          key: cargo-${{ env.RUST_VERSION }}-${{ env.SOLANA_VERSION }}-${{ hashFiles('**/Cargo.toml') }}
-          restore-keys: cargo-${{ env.RUST_VERSION }}-${{ env.SOLANA_VERSION }}-
-
+          key: cargo-${{ env.RUST_VERSION }}-${{ env.ANCHOR_VERSION }}-${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: cargo-${{ env.RUST_VERSION }}-${{ env.ANCHOR_VERSION }}-
       - name: Install Solana CLI
         run: |
           sh -c "$(curl -sSfL https://release.anza.xyz/v${{ env.SOLANA_VERSION }}/install)"
           echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
-
       - name: Install Anchor CLI
         run: |
+          printf '[patch.crates-io]\ntime = { version = "0.3.45" }\n' > /tmp/patch.toml
           cargo install --git https://github.com/coral-xyz/anchor \
-            --tag v${{ env.ANCHOR_VERSION }} anchor-cli --locked
+            --tag v${{ env.ANCHOR_VERSION }} anchor-cli \
+            --config /tmp/patch.toml
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
-
       - name: Restore deploy wallet
         run: |
           echo "${{ secrets.DEPLOY_KEYPAIR_JSON }}" > /tmp/wallet.json
           echo "ANCHOR_WALLET=/tmp/wallet.json" >> $GITHUB_ENV
           solana config set --url devnet
-
       - name: Deploy program
         run: |
+          source "$HOME/.cargo/env"
           anchor build
           anchor deploy --provider.cluster devnet
           PROGRAM_ID=$(solana address -k target/deploy/mampostera-keypair.json)
           echo "PROGRAM_ID=$PROGRAM_ID" >> $GITHUB_ENV
-
       - name: Install Node deps
         run: yarn install --no-frozen-lockfile
-
       - name: Deploy to Vercel
         uses: amondnet/vercel-action@v25
         with:
@@ -234,18 +217,13 @@ jobs:
     environment: testnet
     steps:
       - uses: actions/checkout@v4
-
       - name: Install Rust ${{ env.RUST_VERSION }}
         run: |
-          curl https://sh.rustup.rs -sSf | sh -s -- -y \
-            --default-toolchain ${{ env.RUST_VERSION }} \
-            --profile minimal
+          curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain ${{ env.RUST_VERSION }} --profile minimal
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
-
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-
       - uses: actions/cache@v4
         with:
           path: |
@@ -253,43 +231,39 @@ jobs:
             ~/.cargo/git
             ~/.cargo/bin
             target
-          key: cargo-${{ env.RUST_VERSION }}-${{ env.SOLANA_VERSION }}-${{ hashFiles('**/Cargo.toml') }}
-          restore-keys: cargo-${{ env.RUST_VERSION }}-${{ env.SOLANA_VERSION }}-
-
+          key: cargo-${{ env.RUST_VERSION }}-${{ env.ANCHOR_VERSION }}-${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: cargo-${{ env.RUST_VERSION }}-${{ env.ANCHOR_VERSION }}-
       - name: Install Solana CLI
         run: |
           sh -c "$(curl -sSfL https://release.anza.xyz/v${{ env.SOLANA_VERSION }}/install)"
           echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
-
       - name: Install Anchor CLI
         run: |
+          printf '[patch.crates-io]\ntime = { version = "0.3.45" }\n' > /tmp/patch.toml
           cargo install --git https://github.com/coral-xyz/anchor \
-            --tag v${{ env.ANCHOR_VERSION }} anchor-cli --locked
+            --tag v${{ env.ANCHOR_VERSION }} anchor-cli \
+            --config /tmp/patch.toml
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
-
       - name: Restore testnet wallet
         run: |
           echo "${{ secrets.TESTNET_DEPLOY_KEYPAIR_JSON }}" > /tmp/wallet.json
-          echo "ANCHOR_WALLET=/tmp/wallet.json"             >> $GITHUB_ENV
+          echo "ANCHOR_WALLET=/tmp/wallet.json" >> $GITHUB_ENV
           solana config set --url testnet
-
       - name: Deploy program
         run: |
+          source "$HOME/.cargo/env"
           anchor build
           anchor deploy --provider.cluster testnet
           PROGRAM_ID=$(solana address -k target/deploy/mampostera-keypair.json)
           echo "PROGRAM_ID=$PROGRAM_ID" >> $GITHUB_ENV
-
       - name: Install Node deps
         run: yarn install --no-frozen-lockfile
-
       - name: Publish IDL on-chain
         run: |
           anchor idl init \
             --filepath target/idl/mampostera.json \
             $(solana address -k target/deploy/mampostera-keypair.json) \
             --provider.cluster testnet
-
       - name: Deploy to Vercel
         uses: amondnet/vercel-action@v25
         with:
