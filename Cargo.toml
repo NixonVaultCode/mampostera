@@ -3,7 +3,7 @@ members   = ["programs/*"]
 resolver  = "2"
 
 [workspace.package]
-rust-version = "1.85"
+rust-version = "1.82"
 
 [profile.release]
 overflow-checks = true
